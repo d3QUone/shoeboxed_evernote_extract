@@ -11,13 +11,12 @@ token_url = 'https://id.shoeboxed.com/oauth/token'
 
 def main():
     global StartPath, authData, authorize_url, token_url
+    # 1
     StartPath = getCurrentPath()
-
     if not path.isfile(StartPath + 'authorize.txt'):
         persInfo = {}
-        
         #model template (for new user) w UI
-        persInfo['shoeboxed'] = {"ID":'your_ID', "Secret":'your_Secret', "redirect_uri":'your_redirect_uri',
+        persInfo['shoeboxed'] = {"ID":'your_ID', "Account_ID":'auto_Account_ID', "Secret":'your_Secret', "redirect_uri":'your_redirect_uri',
                                  "state":'random_CSRFkey', "access_token":'auto_access_token', 
                                  "refresh_token":'auto_refresh_token', "code":'code_from_url_here'}
         persInfo['evernote'] = {'Key':'your_Key', 'Secret':'your_Secret', 'token':'auto_token'}
@@ -61,7 +60,6 @@ def main():
         #the same with evernote (or may be easier)
         persInfo['evernote'] = {"Key":'volkvid', "Secret":'bf8294717d32907e', "token":'auto_token'}
         '''
-        
         authorize = open(StartPath + 'authorize.txt', 'w+')
         authorize.write(json.dumps(persInfo))
         authorize.close()
@@ -72,7 +70,6 @@ def main():
         indexFile.write(json.dumps({'IDs':[]}))
         indexFile.close()
         print "--Empty indexFile (JSON with IDs of Receipts) was created"
-        #file with key "IDs" and list of all ids
 
     if not path.isfile(StartPath + 'Num.txt'):
         print "--Error. No Num file was found. Enter Num (integer only, -1 meals all Recieps) below to create Num file:"
@@ -86,20 +83,11 @@ def main():
             NumFile.write('Num=-1;')
         NumFile.close()
     Num = readNumFromFile()
-        
-    #1 check if token exists
-    #1 yes, go to requesting (2)
-    #1 no, authorize, go to requesting (2)
-    #2 try to make API request
-    #2 ok, save data, go to next req
-    #2 error, refresh access_token, repeat req
-    #3 the same for Evernote will be below
 
-    #new!
-    print '--Authorizing to SHOEBOXED below'
-    #incorect, check what is without 'limit', make a request and then parse json in while 
-        
+    # 2
+    print '--Authorizing to SHOEBOXED below'        
     if authData['shoeboxed']['access_token'] == 'auto_access_token':
+        #means no token 
         print 'creating access_token'        
         r = obtainAccessToken()
         try:
@@ -113,9 +101,12 @@ def main():
             except BaseException as exc:
                 print 'Error 3:', str(exc), ', new r =', r, '\n'
                 
-
+    #call user, save account id, call data...
     #need to check token validation 
     data = callSAPI()
+    #print 'userInfo', json.loads(callSAPI2().text).keys()
+    print '\nuserInfo:', (json.loads(callSAPI2().text))['accounts']['id']
+    
     if data == 'error':
         r = refreshAccessToken()
         try:
@@ -124,8 +115,10 @@ def main():
         except BaseException as exc:
             print 'Error 4:', str(exc), ', new r =', r, '\n'
 
-    print 'data:', data
-    #now convert and export to evernote using SDK
+    #print 'data:', data
+    #print 'userInfo', callSAPI2()
+
+    # 3 now convert and export to evernote using SDK
     if Num == -1:
         pass
         # Num = data['totalCountFiltered'] #int, from https://api.shoeboxed.com/v2/explorer/index.html#!/v2/getDocuments
@@ -135,8 +128,9 @@ def main():
     while i < Num: 
         #here work with evernote SDK
         
-        i += 1 #itterate if no errors exporting/importing 
+        i += 1 #itterate if no errors exporting/importing
 
+        
 
 
     #SAVE AUTHDATA for the future
@@ -146,29 +140,30 @@ def main():
     
 
 def callSAPI():
-    print '\n--Call SHOEBOXED API for test'
+    print '\n--Call SHOEBOXED API (documents) for test'
     sapi_url = 'https://api.shoeboxed.com/v2/'    
     headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'], "Content-Type":"application/json"}
-    r = requests.get(sapi_url+'/accounts/'+authData['shoeboxed']['ID']+'/documents/?', headers=headers)
+    r = requests.get(sapi_url+'accounts/1809100446/documents/?', headers=headers)
     #r = json.loads(r.text)
-    
-    print 'get r:', r
-
+    print 'get r:', r.json
     try:
-        'callSAPI error occur: ' + r['error'] + ' : ' + r['error_description']
+        return json.loads(r.text)
+    except BaseException as ex:
+        print 'callSAPI error occur:', str(ex) 
+        return 'error'
+
+
+def callSAPI2():
+    print '\n--Call SHOEBOXED API (user) for test'
+    sapi_url = 'https://api.shoeboxed.com/v2/'    
+    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'], "Content-Type":"application/json"}
+    r = requests.get(sapi_url+'user/?', headers=headers)
+    print 'get r:', r.json, '\n'
+    try:
+        print 'callSAPI error occur: ' + r['error'] + ' : ' + r['error_description']
         return 'error'
     except:
         return r
-    '''try:
-        #r = r.json()
-        try:
-            'callSAPI error occur: ' + r['error'] + ' : ' + r['error_description']
-            return 'error'
-        except:
-            return r
-    except:
-        return 'error'
-        '''
     
 
 #shoeboxed auth (one time)
