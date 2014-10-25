@@ -119,7 +119,16 @@ def main():
 
     # 3
     print "--Auth to EVERNOTE"
-    client = EvernoteClient(token=authData['evernote']['auth_token'], sandbox=False)
+    try:
+        client = EvernoteClient(token=authData['evernote']['auth_token'], sandbox=False)
+    except BaseException as ex:
+        print "\nError message :", ex
+        print "\nIf token expired, visit \nhttps://www.evernote.com/api/DeveloperToken.action"\
+              "\n\nPaste it below and press Enter:"
+        inp = raw_input()
+        authData['evernote']['auth_token'] = inp
+        client = EvernoteClient(token=authData['evernote']['auth_token'], sandbox=False)        
+        
     user_store = client.get_user_store()
     version_ok = user_store.checkVersion(
         "Evernote EDAMTest (Python)",
@@ -252,7 +261,7 @@ def main():
                 note.content += 'PaymentType.lastFourDigits: '+oneReceipt['paymentType']['lastFourDigits']+'<br/>'
             except:
                 note.content += 'PaymentType.lastFourDigits: None<br/>'
-            note.content += '<en-media type="application/pdf" hash="' + hash_hex + '"/>'
+            note.content += '<br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
             note.content += '</en-note>'
 
             try:
@@ -270,7 +279,7 @@ def main():
             break
             # out of Num Receipt limit 
 
-    print '\nAll added notes ids :', ids, '\n\nError occured in notes with ids :', uncreatedNotes
+    print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes with ids :', uncreatedNotes
 
     #SAVE document IDs
     indexFile = open(StartPath + 'indexFile.txt', 'w+')
