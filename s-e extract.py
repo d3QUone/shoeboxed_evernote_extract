@@ -16,8 +16,6 @@ import binascii
 #shoeboxed info
 authorize_url = 'https://id.shoeboxed.com/oauth/authorize'    
 token_url = 'https://id.shoeboxed.com/oauth/token'
-#evernote info
-auth_token = "S=s519:U=5174815:E=1509b265235:C=149437524d8:P=1cd:A=en-devtoken:V=2:H=f4b59d04da0aa9e051190aa615d08e6f"
 
 def main():
     global StartPath, authData, authorize_url, token_url, auth_token
@@ -41,34 +39,19 @@ def main():
         print ("Paste 'redirect_uri' below and press Enter:")
         inp = raw_input()
         persInfo['shoeboxed']['redirect_uri'] = inp
-        print ("Then open next link\n\n" + str(returnAuthURL(persInfo)) + "\n\nAuthorize to shoeboxed and allow access."+
+        print ("\nOpen next link\n\n" + str(returnAuthURL(persInfo)) + "\n\nAuthorize to shoeboxed and allow access."+
                "You'll be redirected to 'redirect_uri'. Click on address line - there will be something like this: http://rezoh.ru/?code="+
                "933bed8f-cdc8-4628-8ce2-b51c976ed223&state=random_CSRF_key\n\nand paste 'code' value below and press enter:")
         inp = raw_input()
         persInfo['shoeboxed']['code'] = inp
 
         #EVERNOTE interactive
-        print("Please fill in your developer token\nTo get a developer token,"\
-              "visit https://www.evernote.com/api/DeveloperToken.action"\
+        print("\nNow Evernote. Visit and create token \nhttps://www.evernote.com/api/DeveloperToken.action"\
               "\n\nPaste it below and press Enter:")
         inp = raw_input()
         persInfo['evernote']['auth_token'] = inp
-        
-        '''
-        #model with my current account datas (for simplify testing)
-        persInfo['shoeboxed'] = {"ID":'4ad9df8b07bc444482d2f568981439bc', "Secret":'Ma91KV1M1gwIK.NzDYfuheKG64sywYouYzU882aez8d2zMs7toh.2',
-                                 "redirect_uri":'http://rezoh.ru', "state":'random_CSRF_key', "access_token":'auto_access_token', 
-                                 "refresh_token":'auto_refresh_token', "code":'code_from_url_here'}
 
-        print ("Open the link below and create a new appp\n\nhttps://app.shoeboxed.com/member/v2/user-settings#api\n\nThen open next\n\n"+
-               str(returnAuthURL(persInfo)) + "\n\nAuthorize to shoeboxed and allow access. You'll be redirected. "+
-               "Click on address line - there will be something like this: http://rezoh.ru/?code="+
-               "933bed8f-cdc8-4628-8ce2-b51c976ed223&state=random_CSRF_key\n\nPaste 'code' value below and press enter:")
-        inp = raw_input() #code
-        persInfo['shoeboxed']['code'] = inp.replace('\n', '')
-        #the same with evernote (or may be easier)
-        persInfo['evernote'] = {"Key":'volkvid', "Secret":'bf8294717d32907e', "token":'auto_token'}
-        '''
+        #save auth data
         authorize = open(StartPath + 'authorize.txt', 'w+')
         authorize.write(json.dumps(persInfo))
         authorize.close()
@@ -111,24 +94,32 @@ def main():
             except BaseException as exc:
                 print 'Error 3:', str(exc), ', new r =', r, '\n'
 
+    #SAVE AUTHDATA 
+    authorize = open(StartPath + 'authorize.txt', 'w+')
+    authorize.write(json.dumps(authData))
+    authorize.close()
+
     sUserInfo = callSAPI2()
-    print '\nsUserInfo =', sUserInfo, '\n'
+    print '\nsUserInfo.status =', sUserInfo
     if sUserInfo.status_code in [401, 404]:
-        print 'refreshing token'
+        print '\nrefreshing token'
         r = refreshAccessToken()
         try:
             authData['shoeboxed']['access_token'] = r['access_token']
             sUserInfo = json.loads(callSAPI2().text)
-            authData['shoeboxed']['Account_ID'] = sUserInfo['accounts']['id']
+            authData['shoeboxed']['Account_ID'] = sUserInfo['accounts'][0]['id']
         except BaseException as exc:
-            print 'Error 4:', str(exc), ', new r =', r, '\n'
-    #else:
-    #    sUserInfo = json.loads(callSAPI2().text)
-        #authData['shoeboxed']['Account_ID'] = sUserInfo['accounts']['id']
+            print 'Error 4:', str(exc), ', new r =', r,
+            print '\n\nIncorrect data. Delete authorize.txt and restart script!'
+            sys.exit(2)
+    else:
+        sUserInfo = json.loads(sUserInfo.text)
+        print '\nsUserInfo =', sUserInfo, '\n'
+        authData['shoeboxed']['Account_ID'] = sUserInfo['accounts'][0]['id']
 
-    # auth to evernote
+    # 3
     print "--Auth to EVERNOTE"
-    client = EvernoteClient(token=auth_token, sandbox=False) #persInfo['evernote']['auth_token']
+    client = EvernoteClient(token=authData['evernote']['auth_token'], sandbox=False)
     user_store = client.get_user_store()
     version_ok = user_store.checkVersion(
         "Evernote EDAMTest (Python)",
@@ -165,7 +156,12 @@ def main():
     uncreatedNotes = []
     data = callSAPI()
     print 'data.status_code =', data.status_code, '\n'
-    json_data = json.loads(data.text)
+    try:
+        json_data = json.loads(data.text)
+    except BaseException as ex:
+        print "Error 5:", ex
+        print "json_data was ", json_data
+        sys.exit(2)
 
     if Num == -1:
         Num = json_data['totalCountFiltered']
@@ -193,7 +189,7 @@ def main():
             # downloading pdf by link and formating
 
             imageURL = oneReceipt['attachment']['url']
-            image = urllib.urlopen(imageURL, proxies={}).read() #open('enlogo.png', 'rb').read()
+            image = urllib.urlopen(imageURL, proxies={}).read()
             md5 = hashlib.md5()
             md5.update(image)
             hash = md5.digest()
@@ -275,45 +271,17 @@ def main():
             # out of Num Receipt limit 
 
     print '\nAll added notes ids :', ids, '\n\nError occured in notes with ids :', uncreatedNotes
-        
-    #SAVE AUTHDATA 
-    authorize = open(StartPath + 'authorize.txt', 'w+')
-    authorize.write(json.dumps(authData))
-    authorize.close()
 
     #SAVE document IDs
     indexFile = open(StartPath + 'indexFile.txt', 'w+')
     indexFile.write(json.dumps(ids))
     indexFile.close()
-    
 
-def callSAPI():
-    print '\n--Call SHOEBOXED API (documents)'
-    sapi_url = 'https://api.shoeboxed.com/v2/'    
-    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
-               "Content-Type":"application/json"}
-    params = {}
-    params['type'] = 'receipt'
-    r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
-                     headers=headers, params=params)
-    print "'documents'status code:", r.status_code
-    return r
-    '''try:
-        return json.loads(r.text)
-    except BaseException as ex:
-        print 'callSAPI error occur:', str(ex) 
-        return 'error'''
+    #SAVE AUTHDATA 
+    authorize = open(StartPath + 'authorize.txt', 'w+')
+    authorize.write(json.dumps(authData))
+    authorize.close()
 
-
-def callSAPI2():
-    print '\n--Call SHOEBOXED API (user)'
-    sapi_url = 'https://api.shoeboxed.com/v2/'    
-    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
-               "Content-Type":"application/json"}
-    r = requests.get(sapi_url+'user/?', headers=headers)
-    print "'user'status code:", r.status_code
-    return r
-    
 
 #shoeboxed auth (one time)
 def obtainAccessToken():
@@ -326,6 +294,7 @@ def obtainAccessToken():
     r = requests.post(token_url, headers=headers, params=params,
                       auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
     r = json.loads(r.text)
+    print "\nobtainAccessToken returns", r, "\n"
     return r
 
 
@@ -340,6 +309,29 @@ def refreshAccessToken():
     r = requests.post(token_url, headers=headers, params=params,
                       auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
     r = json.loads(r.text)
+    return r
+    
+
+def callSAPI():
+    print '\n--Call SHOEBOXED API (documents)'
+    sapi_url = 'https://api.shoeboxed.com/v2/'    
+    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
+               "Content-Type":"application/json"}
+    params = {}
+    params['type'] = 'receipt'
+    r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
+                     headers=headers, params=params)
+    print "'documents'status code:", r.status_code
+    return r
+
+
+def callSAPI2():
+    print '\n--Call SHOEBOXED API (user)'
+    sapi_url = 'https://api.shoeboxed.com/v2/'    
+    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
+               "Content-Type":"application/json"}
+    r = requests.get(sapi_url+'user/?', headers=headers)
+    print "'user'status code:", r.status_code
     return r
     
 
