@@ -22,4 +22,4 @@ sudo pip evernote<br>
 4) Download script and files, open script in Python IDE and press fn+F5 to run them 
 You’ll get interactive instructions in the script output. Follow them you will get all data to authorize. 
 
-If any problems or errors - feel free to contact me. ~I’m waiting on-line~
+If any problems or errors - feel free to contact me.
