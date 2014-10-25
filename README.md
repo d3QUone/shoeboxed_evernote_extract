@@ -1,4 +1,4 @@
-Python script to extract all Receipts from "Shoeboxed" to "Evernote"
+Python script to extract all Receipts <br>from "Shoeboxed" to "Evernote"
 ==========================
 
 Here is a basic guide to complete job using this script.
