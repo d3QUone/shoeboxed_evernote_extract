@@ -9,6 +9,10 @@ import evernote.edam.userstore.constants as UserStoreConstants
 import evernote.edam.type.ttypes as Types
 from evernote.api.client import EvernoteClient
 
+import time
+import hashlib
+import binascii
+
 #shoeboxed info
 authorize_url = 'https://id.shoeboxed.com/oauth/authorize'    
 token_url = 'https://id.shoeboxed.com/oauth/token'
@@ -21,11 +25,11 @@ def main():
     StartPath = getCurrentPath()
     if not path.isfile(StartPath + 'authorize.txt'):
         persInfo = {}
-        #model template (for new user) w UI
+        #model template (for new user) with interactive instructions
         persInfo['shoeboxed'] = {"ID":'your_ID', "Account_ID":'auto_Account_ID', "Secret":'your_Secret', "redirect_uri":'your_redirect_uri',
                                  "state":'random_CSRFkey', "access_token":'auto_access_token', 
                                  "refresh_token":'auto_refresh_token', "code":'code_from_url_here'}
-        persInfo['evernote'] = {'Key':'your_Key', 'Secret':'your_Secret', 'token':'auto_token'}
+        persInfo['evernote'] = {"auth_token":'your_auth_token'}
         #SHOEBOXED interactive instructions
         print ("Open the link below and create a new appp:\n\nhttps://app.shoeboxed.com/member/v2/user-settings#api"+
                "\n\nPaste 'ID' below and press Enter:")
@@ -43,13 +47,12 @@ def main():
         inp = raw_input()
         persInfo['shoeboxed']['code'] = inp
 
-        #EVERNOTE is not tested yet, have to use its SDK
-        print("\nAuth to evernote and create 'Key' and 'Sedret'\nPaste 'Key' below and press Enter:")
+        #EVERNOTE interactive
+        print("Please fill in your developer token\nTo get a developer token,"\
+              "visit https://www.evernote.com/api/DeveloperToken.action"\
+              "\n\nPaste it below and press Enter:")
         inp = raw_input()
-        persInfo['evernote']['Key'] = inp
-        print("Paste 'Secret' below and press Enter:")
-        inp = raw_input()
-        persInfo['evernote']['Secret'] = inp
+        persInfo['evernote']['auth_token'] = inp
         
         '''
         #model with my current account datas (for simplify testing)
@@ -92,10 +95,10 @@ def main():
     Num = readNumFromFile()
 
     # 2
-    print '--Authorizing to SHOEBOXED below'        
+    print '--Auth to SHOEBOXED'        
     if authData['shoeboxed']['access_token'] == 'auto_access_token':
         #means no token 
-        print 'creating access_token'        
+        print 'Creating access_token'        
         r = obtainAccessToken()
         try:
             authData['shoeboxed']['access_token'] = r['access_token']
@@ -109,7 +112,7 @@ def main():
                 print 'Error 3:', str(exc), ', new r =', r, '\n'
 
     sUserInfo = callSAPI2()
-    #print type(sUserInfo.status_code)
+    print '\nsUserInfo =', sUserInfo, '\n'
     if sUserInfo.status_code in [401, 404]:
         print 'refreshing token'
         r = refreshAccessToken()
@@ -119,26 +122,13 @@ def main():
             authData['shoeboxed']['Account_ID'] = sUserInfo['accounts']['id']
         except BaseException as exc:
             print 'Error 4:', str(exc), ', new r =', r, '\n'
-
-    data = callSAPI()
-    print 'data:', data.text, '\nstatus code =', data.status_code, '\n'
-
-    # 3 now convert and export to evernote using SDK
-    if Num == -1:
-        Num = sUserInfo['totalCountFiltered']
-        print 'Num =', Num
-        #int, from https://api.shoeboxed.com/v2/explorer/index.html#!/v2/getDocuments
-        #all docs by filter Receipt
-
+    #else:
+    #    sUserInfo = json.loads(callSAPI2().text)
+        #authData['shoeboxed']['Account_ID'] = sUserInfo['accounts']['id']
 
     # auth to evernote
-    if auth_token == "your developer token":
-        print "Please fill in your developer token\nTo get a developer token,"\
-              "visit https://www.evernote.com/api/DeveloperToken.action"\
-              "\n\nPaste it below and press Enter:"
-        auth_token = raw_input()
-
-    client = EvernoteClient(token=auth_token, sandbox=False)
+    print "--Auth to EVERNOTE"
+    client = EvernoteClient(token=auth_token, sandbox=False) #persInfo['evernote']['auth_token']
     user_store = client.get_user_store()
     version_ok = user_store.checkVersion(
         "Evernote EDAMTest (Python)",
@@ -146,31 +136,118 @@ def main():
         UserStoreConstants.EDAM_VERSION_MINOR
     )
     
-    #!!! find how to create a new notebook, and create note in chosen notebook
+    # check notebook and create if none
+    notebookTargetName = "Shoeboxed"
+    targetNotebook = Types.Notebook()
+
     note_store = client.get_note_store()
-        
+    notebooks = []
+    for notebook in note_store.listNotebooks():
+        notebooks.append(notebook.name) 
+        if notebook.name == notebookTargetName:
+            targetNotebook = notebook
+    
+    if notebookTargetName not in notebooks:
+        targetNotebook.name = notebookTargetName
+        targetNotebook = note_store.createNotebook(targetNotebook)
+        print "Notebook named " + notebookTargetName + " was created"
+
+    notebookGUID = targetNotebook.guid
+    print 'notebookGUID =', notebookGUID
+
+    S = ['1 - OTHER IN QB', '1 - RECEIPT IN QB', '1 - STATEMENT RECONCILED IN QB',
+         'Manoj - Ask Richard', 'Manoj - Duplicate', 'Manoj - Entered', 'Richard', 'Richard Responded']
+    s = []
+    for t in S:
+        s.append(t.lower().replace(' ', ''))
+
     i = 1
+    uncreatedNotes = []
+    data = callSAPI()
+    print 'data.status_code =', data.status_code, '\n'
     json_data = json.loads(data.text)
+
+    if Num == -1:
+        Num = json_data['totalCountFiltered']
+    print '\n--Num to sync =', Num, '\n'
+    
     for oneReceipt in json_data['documents']:
         if oneReceipt['id'] not in ids['IDs']:
-            print 'Receipt N', i,'\n', oneReceipt, '\n'
-            ids['IDs'].append(oneReceipt['id'])
+            print 'Receipt #', i,'\n', oneReceipt
 
+            # creating Note object 
             note = Types.Note()
-            note.title = oneReceipt['issued'][:-1] + ' - ' + oneReceipt['vendor']
-            note.creation_date = oneReceipt['uploaded'][:-1]
-            note.modified_date = oneReceipt['modified'][:-1]
+            note.notebookGuid = notebookGUID 
+            note.title = (oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+
+                          oneReceipt['vendor'])
 
+            # add times 
+            t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
+            t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+            note.created = t
+
+            t = oneReceipt['modified'][:oneReceipt['modified'].find('T')]
+            t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+            note.updated = t
+            
+            # downloading pdf by link and formating
+
+            imageURL = oneReceipt['attachment']['url']
+            image = urllib.urlopen(imageURL, proxies={}).read() #open('enlogo.png', 'rb').read()
+            md5 = hashlib.md5()
+            md5.update(image)
+            hash = md5.digest()
+
+            data = Types.Data()
+            data.size = len(image)
+            data.bodyHash = hash
+            data.body = image
+
+            resource = Types.Resource()
+            resource.mime = 'application/pdf'
+            resource.data = data
+
+            note.resources = [resource]
+
+            hash_hex = binascii.hexlify(hash)
+
+            # creating Tag object from Categories
+            #need fix to tech task
+            tags = ['Shoeboxed', 'Shoeboxed ' + oneReceipt['source']['type']]
+            if oneReceipt['source']['type'] == 'mail':
+                tags.append('G:'+oneReceipt['source']['envelope'])
+
+            #isS = 'no'
+            for tag in oneReceipt['categories']:
+                if tag.replace('&', 'amp;').encode('utf-8').lower().replace(' ', '') in s:
+                    tags.append('S:'+tag.replace('&', 'amp;').encode('utf-8'))
+                    #isS = 'yes'
+                else:
+                    tags.append('T:'+tag.replace('&', 'amp;').encode('utf-8'))
+                    
+            '''
+            for tag in oneReceipt['categories']:
+                if tag.lower().replace(' ', '') not in s and isS == 'no':
+                    tags.append('T:'+tag.replace('&', 'amp;').encode('utf-8'))'''
+                
+            note.tagNames = tags
+
+            # composing all data into Note
             note.content = '<?xml version="1.0" encoding="UTF-8"?>'
             note.content += '<!DOCTYPE en-note SYSTEM ' \
                 '"http://xml.evernote.com/pub/enml2.dtd">'
             note.content += '<en-note>Document.id: '+oneReceipt['id']+'<br/>'
-            #note.content += 'Document.invoiceNumber :'+oneReceipt['']+'<br/>'
-            note.content += 'Document.notes: '+oneReceipt['notes']+'<br/>'
+            try:
+                note.content += 'Document.invoiceNumber: '+oneReceipt['']+'<br/>'
+            except:
+                note.content += 'Document.invoiceNumber: None<br/>'                
+            note.content += 'Document.notes: '+oneReceipt['notes'].replace('&', '&amp;')+'<br/>'
             #note.content += 'Document.paymentType: '+oneReceipt['paymentType']+'<br/>'
-            note.content += 'Document.source: '+oneReceipt['source']['name']+'<br/>'
+            note.content += 'DocumentSource.name: '+oneReceipt['source']['name']+'<br/>'
             note.content += 'Document.total: '+str(oneReceipt['total'])+'<br/>'
             note.content += 'Document.tax: '+str(oneReceipt['tax'])+'<br/>'
+            note.content += 'Document.totalInPreferredCurrency: '+str(oneReceipt['totalInPreferredCurrency'])+'<br/>'
+            note.content += 'Document.taxInPreferredCurrency: '+str(oneReceipt['taxInPreferredCurrency'])+'<br/>'
             note.content += 'Document.currency: '+str(oneReceipt['currency'])+'<br/>'
             note.content += 'Document.trashed: '+str(oneReceipt['trashed'])+'<br/>'
             note.content += 'DocumentSourse.type: '+oneReceipt['source']['type']+'<br/>'
@@ -178,25 +255,26 @@ def main():
             try:
                 note.content += 'PaymentType.lastFourDigits: '+oneReceipt['paymentType']['lastFourDigits']+'<br/>'
             except:
-                pass
-         
-            #note.content += '<en-media type="image/png" hash="' + hash_hex + '"/>'
-            #note.content += '<en-media type="image/jpg" hash="' + resource.hashCode + '"/>'
+                note.content += 'PaymentType.lastFourDigits: None<br/>'
+            note.content += '<en-media type="application/pdf" hash="' + hash_hex + '"/>'
             note.content += '</en-note>'
 
-            # Finally, send the new note to Evernote using the createNote method
-            # The new Note object that is returned will contain server-generated
-            # attributes such as the new note's unique GUID.
             try:
                 created_note = note_store.createNote(note)
+                ids['IDs'].append(oneReceipt['id'])
             except BaseException as ex:
-                print "Error creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n\n"
-            
-        #while i < Num: 
-        #here work with evernote SDK
-        i += 1 #itterate if no errors exporting/importing
+                print "\nError creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n"
+                uncreatedNotes.append(oneReceipt['id'])
+                # uncreated notes will be repeated after 
 
-    print '\ngotten ids', ids
+            i += 1
+            print ""
+            
+        if i > Num:
+            break
+            # out of Num Receipt limit 
+
+    print '\nAll added notes ids :', ids, '\n\nError occured in notes with ids :', uncreatedNotes
         
     #SAVE AUTHDATA 
     authorize = open(StartPath + 'authorize.txt', 'w+')
@@ -210,16 +288,14 @@ def main():
     
 
 def callSAPI():
-    print '\n--Call SHOEBOXED API (documents) for test'
+    print '\n--Call SHOEBOXED API (documents)'
     sapi_url = 'https://api.shoeboxed.com/v2/'    
     headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
                "Content-Type":"application/json"}
     params = {}
     params['type'] = 'receipt'
-    #r = requests.get(sapi_url+'accounts/1809100446/documents/?', headers=headers)
     r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
                      headers=headers, params=params)
-    #r = json.loads(r.text)
     print "'documents'status code:", r.status_code
     return r
     '''try:
@@ -230,7 +306,7 @@ def callSAPI():
 
 
 def callSAPI2():
-    print '\n--Call SHOEBOXED API (user) for test'
+    print '\n--Call SHOEBOXED API (user)'
     sapi_url = 'https://api.shoeboxed.com/v2/'    
     headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
                "Content-Type":"application/json"}
@@ -251,12 +327,10 @@ def obtainAccessToken():
                       auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
     r = json.loads(r.text)
     return r
-    #return r.json()
 
 
 #shoeboxed auth (all other times)
 def refreshAccessToken():
-    #print '\nauthData:\n', json.dumps(authData), '\n'
     headers = {'Content-Type':'application/x-www-form-urlencoded'}
     params = {}
     params['refresh_token'] = authData['shoeboxed']['refresh_token'] 
@@ -267,7 +341,6 @@ def refreshAccessToken():
                       auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
     r = json.loads(r.text)
     return r
-    #return r.json()
     
 
 def readAuthDataFromFile():
