@@ -15,11 +15,11 @@ cd - moves you to the directory of file
 pwd - allow you to check and sure that you are not mistaken
 sudo - installation under administration, need your password 
 
-3) Now install 2 packages from Terminal:
-sudo pip requests 
-sudo pip evernote 
+3) Now install 2 packages from Terminal:<br>
+sudo pip requests<br>
+sudo pip evernote<br>
 
 4) Download script and files, open script in Python IDE and press fn+F5 to run them 
 You’ll get interactive instructions in the script output. Follow them you will get all data to authorize. 
 
-If any problems or errors - feel free to contact me. I’m waiting on-line.
+If any problems or errors - feel free to contact me. ~I’m waiting on-line~
