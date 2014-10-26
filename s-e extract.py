@@ -100,7 +100,6 @@ def main():
     authorize.close()
 
     sUserInfo = callSAPI2()
-    print '\nsUserInfo.status =', sUserInfo
     if sUserInfo.status_code in [401, 404]:
         print '\nrefreshing token'
         r = refreshAccessToken()
@@ -118,7 +117,7 @@ def main():
         authData['shoeboxed']['Account_ID'] = sUserInfo['accounts'][0]['id']
 
     # 3
-    print "--Auth to EVERNOTE"
+    print "\n--Auth to EVERNOTE"
     try:
         client = EvernoteClient(token=authData['evernote']['auth_token'], sandbox=False)
     except BaseException as ex:
@@ -164,7 +163,6 @@ def main():
     i = 1
     uncreatedNotes = []
     data = callSAPI()
-    print 'data.status_code =', data.status_code, '\n'
     try:
         json_data = json.loads(data.text)
     except BaseException as ex:
@@ -174,7 +172,7 @@ def main():
 
     if Num == -1:
         Num = json_data['totalCountFiltered']
-    print '\n--Num to sync =', Num, '\n'
+    print '\n--Nums to sync =', Num, '\n'
     
     for oneReceipt in json_data['documents']:
         if oneReceipt['id'] not in ids['IDs']:
@@ -183,8 +181,7 @@ def main():
             # creating Note object 
             note = Types.Note()
             note.notebookGuid = notebookGUID 
-            note.title = (oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+
-                          oneReceipt['vendor'])
+            note.title = (oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor'])
 
             # add times 
             t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
@@ -196,7 +193,6 @@ def main():
             note.updated = t
             
             # downloading pdf by link and formating
-
             imageURL = oneReceipt['attachment']['url']
             image = urllib.urlopen(imageURL, proxies={}).read()
             md5 = hashlib.md5()
@@ -211,86 +207,96 @@ def main():
             resource = Types.Resource()
             resource.mime = 'application/pdf'
             resource.data = data
-
             note.resources = [resource]
 
             hash_hex = binascii.hexlify(hash)
 
             # creating Tag object from Categories
-            #need fix to tech task
             tags = ['Shoeboxed', 'Shoeboxed ' + oneReceipt['source']['type']]
             if oneReceipt['source']['type'] == 'mail':
                 tags.append('G:'+oneReceipt['source']['envelope'])
 
-            #isS = 'no'
             for tag in oneReceipt['categories']:
-                if tag.replace('&', 'amp;').encode('utf-8').lower().replace(' ', '') in s:
-                    tags.append('S:'+tag.replace('&', 'amp;').encode('utf-8'))
-                    #isS = 'yes'
+                if tag.replace('&', '&amp;').encode('utf-8').lower().replace(' ', '') in s:
+                    tags.append('S:'+tag.replace('&', '&amp;').encode('utf-8'))
                 else:
-                    tags.append('T:'+tag.replace('&', 'amp;').encode('utf-8'))
-                    
-            '''
-            for tag in oneReceipt['categories']:
-                if tag.lower().replace(' ', '') not in s and isS == 'no':
-                    tags.append('T:'+tag.replace('&', 'amp;').encode('utf-8'))'''
-                
+                    tags.append('T:'+tag.replace('&', '&amp;').encode('utf-8'))
             note.tagNames = tags
 
-            # composing all data into Note
+            # representing data
             note.content = '<?xml version="1.0" encoding="UTF-8"?>'
-            note.content += '<!DOCTYPE en-note SYSTEM ' \
-                '"http://xml.evernote.com/pub/enml2.dtd">'
-            note.content += '<en-note>Document.id: '+oneReceipt['id']+'<br/>'
+            note.content += '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">'\
+                            '<en-note>' 
+            note.content += '<h2>' + oneReceipt['vendor'].replace('&', '&amp;') +\
+                            '</h2><table bgcolor="#F8F8F8 " border="0" width="60%">'
+            note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
+            note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
+            note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
+            note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
             try:
-                note.content += 'Document.invoiceNumber: '+oneReceipt['']+'<br/>'
+                note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'],
+                                                    '**** **** **** ' + str(oneReceipt['paymentType']['lastFourDigits'])])
             except:
-                note.content += 'Document.invoiceNumber: None<br/>'                
-            note.content += 'Document.notes: '+oneReceipt['notes'].replace('&', '&amp;')+'<br/>'
-            #note.content += 'Document.paymentType: '+oneReceipt['paymentType']+'<br/>'
-            note.content += 'DocumentSource.name: '+oneReceipt['source']['name']+'<br/>'
-            note.content += 'Document.total: '+str(oneReceipt['total'])+'<br/>'
-            note.content += 'Document.tax: '+str(oneReceipt['tax'])+'<br/>'
-            note.content += 'Document.totalInPreferredCurrency: '+str(oneReceipt['totalInPreferredCurrency'])+'<br/>'
-            note.content += 'Document.taxInPreferredCurrency: '+str(oneReceipt['taxInPreferredCurrency'])+'<br/>'
-            note.content += 'Document.currency: '+str(oneReceipt['currency'])+'<br/>'
-            note.content += 'Document.trashed: '+str(oneReceipt['trashed'])+'<br/>'
-            note.content += 'DocumentSourse.type: '+oneReceipt['source']['type']+'<br/>'
-            note.content += 'PaymentType.type: '+oneReceipt['paymentType']['type']+'<br/>'
+                note.content += makeTableDoubleRow(['Payment', 'Type'],
+                                                   [oneReceipt['paymentType']['type'], '**** **** **** none'])
+            note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
+            note.content += makeTableRow(' ', ' ')
+            note.content += makeTableRow('Document ID', oneReceipt['id'])
+            note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
+            note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
             try:
-                note.content += 'PaymentType.lastFourDigits: '+oneReceipt['paymentType']['lastFourDigits']+'<br/>'
+                note.content += makeTableRow('Invoice Number', oneReceipt['invoiceNumber'])
             except:
-                note.content += 'PaymentType.lastFourDigits: None<br/>'
-            note.content += '<br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
+                note.content += makeTableRow('Invoice Number', 'none')                
+            note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
+            note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
+            note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
+            note.content += makeTableDoubleRow(['Document', 'Sourse'], [oneReceipt['source']['name'],
+                                                             oneReceipt['source']['type']])
+            note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
+            #note.content += '</table><br/><br/>' #if upload limit is out
             note.content += '</en-note>'
 
             try:
                 created_note = note_store.createNote(note)
                 ids['IDs'].append(oneReceipt['id'])
+                #SAVE document IDs
+                indexFile = open(StartPath + 'indexFile.txt', 'w+')
+                indexFile.write(json.dumps(ids))
+                indexFile.close()
             except BaseException as ex:
                 print "\nError creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n"
                 uncreatedNotes.append(oneReceipt['id'])
-                # uncreated notes will be repeated after 
 
             i += 1
             print ""
-            
         if i > Num:
             break
-            # out of Num Receipt limit 
 
     print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes with ids :', uncreatedNotes
-
-    #SAVE document IDs
-    indexFile = open(StartPath + 'indexFile.txt', 'w+')
-    indexFile.write(json.dumps(ids))
-    indexFile.close()
 
     #SAVE AUTHDATA 
     authorize = open(StartPath + 'authorize.txt', 'w+')
     authorize.write(json.dumps(authData))
     authorize.close()
+    
 
+#representation of result
+def makeTableRow(name, val):
+    if val == '':
+        val = 'none'
+    return '<tr><td> '+name+' </td><td> '+val+'</td></tr>'
+
+    
+def makeTableDoubleRow(name, val):
+    no = ''
+    for n in name:
+        no += n + '<br/>'
+    vo = ''
+    for v in val:
+        vo += v + '<br/>'
+    return '<tr><td>'+no+'</td><td>'+vo+'</td></tr>'
+    
 
 #shoeboxed auth (one time)
 def obtainAccessToken():
@@ -330,7 +336,7 @@ def callSAPI():
     params['type'] = 'receipt'
     r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
                      headers=headers, params=params)
-    print "'documents'status code:", r.status_code
+    print "'documents' status code:", r.status_code
     return r
 
 
@@ -340,7 +346,7 @@ def callSAPI2():
     headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
                "Content-Type":"application/json"}
     r = requests.get(sapi_url+'user/?', headers=headers)
-    print "'user'status code:", r.status_code
+    print "'user' status code:", r.status_code
     return r
     
 
