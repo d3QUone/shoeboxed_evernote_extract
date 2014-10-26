@@ -13,7 +13,7 @@ import time
 import hashlib
 import binascii
 
-#shoeboxed info
+#shoeboxed endpoints
 authorize_url = 'https://id.shoeboxed.com/oauth/authorize'    
 token_url = 'https://id.shoeboxed.com/oauth/token'
 
@@ -181,7 +181,7 @@ def main():
             # creating Note object 
             note = Types.Note()
             note.notebookGuid = notebookGUID 
-            note.title = (oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor'])
+            note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
 
             # add times 
             t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
@@ -199,11 +199,12 @@ def main():
             md5.update(image)
             hash = md5.digest()
 
+            # uploading to evernote
             data = Types.Data()
             data.size = len(image)
             data.bodyHash = hash
             data.body = image
-
+            
             resource = Types.Resource()
             resource.mime = 'application/pdf'
             resource.data = data
@@ -223,24 +224,25 @@ def main():
                     tags.append('T:'+tag.replace('&', '&amp;').encode('utf-8'))
             note.tagNames = tags
 
-            # representing data
+            # representing Data
             note.content = '<?xml version="1.0" encoding="UTF-8"?>'
             note.content += '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">'\
                             '<en-note>' 
-            note.content += '<h2>' + oneReceipt['vendor'].replace('&', '&amp;') +\
-                            '</h2><table bgcolor="#F8F8F8 " border="0" width="60%">'
+            note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+\
+                            oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
             note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
             note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
             note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
             note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
             try:
+                dig = int(oneReceipt['paymentType']['lastFourDigits'])
                 note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'],
-                                                    '**** **** **** ' + str(oneReceipt['paymentType']['lastFourDigits'])])
+                                                    '**** **** **** ' + str(dig)])
             except:
                 note.content += makeTableDoubleRow(['Payment', 'Type'],
                                                    [oneReceipt['paymentType']['type'], '**** **** **** none'])
             note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
-            note.content += makeTableRow(' ', ' ')
+            note.content += makeTableRow('&nbsp;', '&nbsp;')
             note.content += makeTableRow('Document ID', oneReceipt['id'])
             note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
             note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
@@ -251,16 +253,16 @@ def main():
             note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
             note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
             note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
-            note.content += makeTableDoubleRow(['Document', 'Sourse'], [oneReceipt['source']['name'],
+            note.content += makeTableDoubleRow(['Document', 'Source'], [oneReceipt['source']['name'],
                                                              oneReceipt['source']['type']])
             note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
-            #note.content += '</table><br/><br/>' #if upload limit is out
+            #note.content += '</table><br/><br/>' #if upload limit is out - switch of pic attach
             note.content += '</en-note>'
 
             try:
                 created_note = note_store.createNote(note)
                 ids['IDs'].append(oneReceipt['id'])
-                #SAVE document IDs
+                #SAVE document ID every step - its safer 
                 indexFile = open(StartPath + 'indexFile.txt', 'w+')
                 indexFile.write(json.dumps(ids))
                 indexFile.close()
