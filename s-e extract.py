@@ -180,17 +180,32 @@ def main():
 
             # creating Note object 
             note = Types.Note()
-            note.notebookGuid = notebookGUID 
-            note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
+            note.notebookGuid = notebookGUID
+            try:
+                note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
+            except:
+                try:
+                    note.title = 'none - '+oneReceipt['vendor']
+                except:
+                    try:
+                        note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none'
+                    except:
+                        note.title = 'none - none'
 
-            # add times 
-            t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
-            t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
-            note.created = t
+            # add times
+            try:
+                t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
+                t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+                note.created = t
+            except:
+                print 'No uploaded time'
 
-            t = oneReceipt['modified'][:oneReceipt['modified'].find('T')]
-            t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
-            note.updated = t
+            try:
+                t = oneReceipt['modified'][:oneReceipt['modified'].find('T')]
+                t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+                note.updated = t
+            except:
+                print 'No modified time'
             
             # downloading pdf by link and formating
             imageURL = oneReceipt['attachment']['url']
@@ -227,13 +242,41 @@ def main():
             # representing Data
             note.content = '<?xml version="1.0" encoding="UTF-8"?>'
             note.content += '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">'\
-                            '<en-note>' 
-            note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+\
-                            oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
-            note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
-            note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
-            note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
-            note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
+                            '<en-note>'
+
+            try:
+                note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+\
+                                oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+            except:
+                try:
+                    note.content += '<h2>none - '+oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                except:
+                    try:
+                        note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                    except:
+                        note.content += '<h2>none - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                        print 'No ussued and no vendor name'
+
+            try:
+                note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
+            except:
+                note.content += makeTableRow('Receipt Date', 'none')
+
+            try:
+                note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
+            except:
+                note.content += makeTableRow('Receipt Total', 'none')
+
+            try:
+                note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
+            except:
+                note.content += makeTableRow('Receipt Tax', 'none')
+                
+            try:
+                note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
+            except:
+                note.content += makeTableRow('Receipt Currency', 'none')
+                
             try:
                 dig = int(oneReceipt['paymentType']['lastFourDigits'])
                 note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'],
@@ -241,20 +284,55 @@ def main():
             except:
                 note.content += makeTableDoubleRow(['Payment', 'Type'],
                                                    [oneReceipt['paymentType']['type'], '**** **** **** none'])
-            note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
+
+            try:
+                note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
+            except:
+                note.content += makeTableRow('Notes', 'none')
+                
             note.content += makeTableRow('&nbsp;', '&nbsp;')
-            note.content += makeTableRow('Document ID', oneReceipt['id'])
-            note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
-            note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
+
+            try:
+                note.content += makeTableRow('Document ID', oneReceipt['id'])
+            except:
+                note.content += makeTableRow('Document ID', 'error ID')
+                
+            try:
+                note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
+            except:
+                note.content += makeTableRow('Date Uploaded', 'none')
+                
+            try:
+                note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
+            except:
+                note.content += makeTableRow('Date Modified', 'none')
+                
             try:
                 note.content += makeTableRow('Invoice Number', oneReceipt['invoiceNumber'])
             except:
-                note.content += makeTableRow('Invoice Number', 'none')                
-            note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
-            note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
-            note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
-            note.content += makeTableDoubleRow(['Document', 'Source'], [oneReceipt['source']['name'],
-                                                             oneReceipt['source']['type']])
+                note.content += makeTableRow('Invoice Number', 'none')
+
+            try:
+                note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
+            except:
+                note.content += makeTableRow('Total in Preferred Currency', 'none')
+
+
+            try:
+                note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
+            except:
+                note.content += makeTableRow('Tax in Preferred Currency', 'none')
+
+            try:
+                note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
+            except:
+                note.content += makeTableRow('Trashed?', 'none')
+
+            try:
+                note.content += makeTableDoubleRow(['Document', 'Source'], [oneReceipt['source']['name'], oneReceipt['source']['type']])
+            except:
+                note.content += makeTableDoubleRow(['Document', 'Source'], ['none', ' '])
+                
             note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
             #note.content += '</table><br/><br/>' #if upload limit is out - switch of pic attach
             note.content += '</en-note>'
