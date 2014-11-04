@@ -295,7 +295,12 @@ def main():
             try:
                 note.content += makeTableRow('Document ID', oneReceipt['id'])
             except:
-                note.content += makeTableRow('Document ID', 'error ID')
+                note.content += makeTableRow('Document ID', 'error document ID, none')
+
+            try:
+                note.content += makeTableRow('Envelope ID', oneReceipt['source']['id'])
+            except:
+                note.content += makeTableRow('Envelope ID', 'none')
                 
             try:
                 note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
