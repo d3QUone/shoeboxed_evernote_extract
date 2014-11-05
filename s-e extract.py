@@ -162,7 +162,6 @@ def main():
 
     i = 1
     uncreatedNotes = []
-    # improve here 
     data = callSAPI(offset = 0, limit = 1) 
     try:
         json_data = json.loads(data.text)
@@ -172,15 +171,14 @@ def main():
         sys.exit(2)
 
     totalCount = json_data['totalCountFiltered']
-    totalSteps = totalCount // 100 + 1
-    print '\n--total count of Receipts =',totalCount, ', totalSteps to process all =', totalSteps
+    print '\n--total count of Receipts =',totalCount
     
     if Num == -1:
         Num = totalCount
     print '\n--Nums to sync =', Num, '\n'
 
-    for step in range(totalSteps):
-        data = callSAPI(offset = step*100, limit = 100) 
+    for step in range(totalCount):
+        data = callSAPI(offset = step, limit = 1)
         try:
             json_data = json.loads(data.text)
         except BaseException as ex:
@@ -188,204 +186,206 @@ def main():
             print "json_data was ", json_data
             sys.exit(2)
         
-        for oneReceipt in json_data['documents']:
-            if oneReceipt['id'] not in ids['IDs']:
-                print 'Receipt #', i,'\n', oneReceipt
+        oneReceipt = json_data['documents'][0]
+        if oneReceipt['id'] not in ids['IDs']:
+            print '-Receipt #', i,'\n', oneReceipt
 
-                # creating Note object 
-                note = Types.Note()
-                note.notebookGuid = notebookGUID
+            # creating Note object 
+            note = Types.Note()
+            note.notebookGuid = notebookGUID
+            try:
+                note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
+            except:
                 try:
-                    note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
+                    note.title = 'none - '+oneReceipt['vendor']
                 except:
                     try:
-                        note.title = 'none - '+oneReceipt['vendor']
+                        note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none'
                     except:
-                        try:
-                            note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none'
-                        except:
-                            note.title = 'none - none'
+                        note.title = 'none - none'
 
-                # add times
+            # add times
+            try:
+                t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
+                t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+                note.created = t
+            except:
+                print 'No uploaded time'
+
+            try:
+                t = oneReceipt['modified'][:oneReceipt['modified'].find('T')]
+                t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
+                note.updated = t
+            except:
+                print 'No modified time'
+            
+            # downloading pdf by link and formating
+            imageURL = oneReceipt['attachment']['url']
+            image = urllib.urlopen(imageURL, proxies={}).read()
+            md5 = hashlib.md5()
+            md5.update(image)
+            hash = md5.digest()
+
+            # uploading to evernote
+            data = Types.Data()
+            data.size = len(image)
+            data.bodyHash = hash
+            data.body = image
+            
+            resource = Types.Resource()
+            resource.mime = 'application/pdf'
+            resource.data = data
+            note.resources = [resource]
+
+            hash_hex = binascii.hexlify(hash)
+            
+            # creating Tag object from Categories
+            try:
+                tags = ['Shoeboxed', 'Shoeboxed ' + oneReceipt['source']['type']]
+            except:
+                tags = ['Shoeboxed']                
+
+            try:
+                if oneReceipt['source']['type'] == 'mail':
+                    tags.append('G:'+oneReceipt['source']['envelope'])
+            except:
+                pass
+                #will be no G-tags
+
+            try:
+                for tag in oneReceipt['categories']:
+                    if tag.replace('&', '&amp;').encode('utf-8').lower().replace(' ', '') in s:
+                        tags.append('S:'+tag.replace('&', '&amp;').encode('utf-8'))
+                    else:
+                        tags.append('T:'+tag.replace('&', '&amp;').encode('utf-8'))
+            except:
+                pass
+                #will be no tags at all 
+
+            note.tagNames = tags
+
+            # representing Data
+            note.content = '<?xml version="1.0" encoding="UTF-8"?>'
+            note.content += '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">'\
+                            '<en-note>'
+
+            try:
+                note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+\
+                                oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+            except:
                 try:
-                    t = oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')]
-                    t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
-                    note.created = t
-                except:
-                    print 'No uploaded time'
-
-                try:
-                    t = oneReceipt['modified'][:oneReceipt['modified'].find('T')]
-                    t = time.mktime(time.strptime(t, "%Y-%m-%d"))*1000
-                    note.updated = t
-                except:
-                    print 'No modified time'
-                
-                # downloading pdf by link and formating
-                imageURL = oneReceipt['attachment']['url']
-                image = urllib.urlopen(imageURL, proxies={}).read()
-                md5 = hashlib.md5()
-                md5.update(image)
-                hash = md5.digest()
-
-                # uploading to evernote
-                data = Types.Data()
-                data.size = len(image)
-                data.bodyHash = hash
-                data.body = image
-                
-                resource = Types.Resource()
-                resource.mime = 'application/pdf'
-                resource.data = data
-                note.resources = [resource]
-
-                hash_hex = binascii.hexlify(hash)
-                
-                # creating Tag object from Categories
-                try:
-                    tags = ['Shoeboxed', 'Shoeboxed ' + oneReceipt['source']['type']]
-                except:
-                    tags = ['Shoeboxed']                
-
-                try:
-                    if oneReceipt['source']['type'] == 'mail':
-                        tags.append('G:'+oneReceipt['source']['envelope'])
-                except:
-                    pass
-                    #will be no G-tags
-
-                try:
-                    for tag in oneReceipt['categories']:
-                        if tag.replace('&', '&amp;').encode('utf-8').lower().replace(' ', '') in s:
-                            tags.append('S:'+tag.replace('&', '&amp;').encode('utf-8'))
-                        else:
-                            tags.append('T:'+tag.replace('&', '&amp;').encode('utf-8'))
-                except:
-                    pass
-                    #will be no tags at all 
-
-                note.tagNames = tags
-
-                # representing Data
-                note.content = '<?xml version="1.0" encoding="UTF-8"?>'
-                note.content += '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">'\
-                                '<en-note>'
-
-                try:
-                    note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+\
-                                    oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                    note.content += '<h2>none - '+oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
                 except:
                     try:
-                        note.content += '<h2>none - '+oneReceipt['vendor'].replace('&', '&amp;')+'</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                        note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
                     except:
-                        try:
-                            note.content += '<h2>'+oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
-                        except:
-                            note.content += '<h2>none - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
-                            print 'No ussued and no vendor name'
+                        note.content += '<h2>none - none</h2><table bgcolor="#F0F0F0" border="0" width="60%">'
+                        print 'No ussued and no vendor name'
 
-                try:
-                    note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
-                except:
-                    note.content += makeTableRow('Receipt Date', 'none')
+            try:
+                note.content += makeTableRow('Receipt Date', oneReceipt['issued'][:oneReceipt['issued'].find('T')])
+            except:
+                note.content += makeTableRow('Receipt Date', 'none')
 
-                try:
-                    note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
-                except:
-                    note.content += makeTableRow('Receipt Total', 'none')
+            try:
+                note.content += makeTableRow('Receipt Total', str(oneReceipt['total']))
+            except:
+                note.content += makeTableRow('Receipt Total', 'none')
 
+            try:
+                note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
+            except:
+                note.content += makeTableRow('Receipt Tax', 'none')
+                
+            try:
+                note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
+            except:
+                note.content += makeTableRow('Receipt Currency', 'none')
+                
+            try:
+                dig = int(oneReceipt['paymentType']['lastFourDigits'])
+                note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'],
+                                                    '**** **** **** ' + str(dig)])
+            except:
                 try:
-                    note.content += makeTableRow('Receipt Tax', str(oneReceipt['tax']))
+                    note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'], '**** **** **** none'])
                 except:
-                    note.content += makeTableRow('Receipt Tax', 'none')
-                    
-                try:
-                    note.content += makeTableRow('Receipt Currency', oneReceipt['currency'])
-                except:
-                    note.content += makeTableRow('Receipt Currency', 'none')
-                    
-                try:
-                    dig = int(oneReceipt['paymentType']['lastFourDigits'])
-                    note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'],
-                                                        '**** **** **** ' + str(dig)])
-                except:
-                    try:
-                        note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'], '**** **** **** none'])
-                    except:
-                        note.content += makeTableRow('Payment Type', 'none')
-                        #if no info given
+                    note.content += makeTableRow('Payment Type', 'none')
+                    #if no info given
 
-                try:
-                    note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
-                except:
-                    note.content += makeTableRow('Notes', 'none')
-                    
-                note.content += makeTableRow('&nbsp;', '&nbsp;')
+            try:
+                note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
+            except:
+                note.content += makeTableRow('Notes', 'none')
+                
+            note.content += makeTableRow('&nbsp;', '&nbsp;')
 
-                try:
-                    note.content += makeTableRow('Document ID', oneReceipt['id'])
-                except:
-                    note.content += makeTableRow('Document ID', 'error document ID, none')
+            try:
+                note.content += makeTableRow('Document ID', oneReceipt['id'])
+            except:
+                note.content += makeTableRow('Document ID', 'error document ID, none')
 
-                try:
-                    note.content += makeTableRow('Envelope ID', oneReceipt['source']['envelope'])
-                except:
-                    pass
-                    
-                try:
-                    note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
-                except:
-                    note.content += makeTableRow('Date Uploaded', 'none')
-                    
-                try:
-                    note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
-                except:
-                    note.content += makeTableRow('Date Modified', 'none')
-                    
-                try:
-                    note.content += makeTableRow('Invoice Number', oneReceipt['invoiceNumber'])
-                except:
-                    note.content += makeTableRow('Invoice Number', 'none')
+            try:
+                note.content += makeTableRow('Envelope ID', oneReceipt['source']['envelope'])
+            except:
+                pass
+                
+            try:
+                note.content += makeTableRow('Date Uploaded', oneReceipt['uploaded'][:oneReceipt['uploaded'].find('T')])
+            except:
+                note.content += makeTableRow('Date Uploaded', 'none')
+                
+            try:
+                note.content += makeTableRow('Date Modified', oneReceipt['modified'][:oneReceipt['modified'].find('T')])
+            except:
+                note.content += makeTableRow('Date Modified', 'none')
+                
+            try:
+                note.content += makeTableRow('Invoice Number', oneReceipt['invoiceNumber'])
+            except:
+                note.content += makeTableRow('Invoice Number', 'none')
 
-                try:
-                    note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
-                except:
-                    note.content += makeTableRow('Total in Preferred Currency', 'none')
-                    
-                try:
-                    note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
-                except:
-                    note.content += makeTableRow('Tax in Preferred Currency', 'none')
+            try:
+                note.content += makeTableRow('Total in Preferred Currency', str(oneReceipt['totalInPreferredCurrency']))
+            except:
+                note.content += makeTableRow('Total in Preferred Currency', 'none')
+                
+            try:
+                note.content += makeTableRow('Tax in Preferred Currency', str(oneReceipt['taxInPreferredCurrency']))
+            except:
+                note.content += makeTableRow('Tax in Preferred Currency', 'none')
 
-                try:
-                    note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
-                except:
-                    note.content += makeTableRow('Trashed?', 'none')
+            try:
+                note.content += makeTableRow('Trashed?', str(oneReceipt['trashed']))
+            except:
+                note.content += makeTableRow('Trashed?', 'none')
 
-                try:
-                    note.content += makeTableRow('Document source', oneReceipt['source']['type'])
-                except:
-                    note.content += makeTableRow('Document source', 'none')
-                    
-                note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
-                #note.content += '</table><br/><br/>' #if upload limit is out - switch of pic attach
-                note.content += '</en-note>'
+            try:
+                note.content += makeTableRow('Document source', oneReceipt['source']['type'])
+            except:
+                note.content += makeTableRow('Document source', 'none')
+                
+            note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
+            #note.content += '</table><br/><br/>' #if upload limit is out - switch of pic attach
+            note.content += '</en-note>'
 
-                try:
-                    created_note = note_store.createNote(note)
-                    ids['IDs'].append(oneReceipt['id'])
-                    #SAVE document ID every step - its safer 
-                    indexFile = open(StartPath + 'indexFile.txt', 'w+')
-                    indexFile.write(json.dumps(ids))
-                    indexFile.close()
-                except BaseException as ex:
-                    print "\nError creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n"
-                    uncreatedNotes.append(oneReceipt['id'])
+            try:
+                created_note = note_store.createNote(note)
+                ids['IDs'].append(oneReceipt['id'])
+                #SAVE document ID every step - its safer
+                indexFile = open(StartPath + 'indexFile.txt', 'w+')
+                indexFile.write(json.dumps(ids))
+                indexFile.close()
+            except BaseException as ex:
+                print "\nError creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n"
+                uncreatedNotes.append(oneReceipt['id'])
 
-                i += 1
-                print ""
-            if i > Num:
-                break
+            i += 1
+            print ""
+
+        #don't move that statement below!
+        if i > Num:
+            break
 
     print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes with ids :', uncreatedNotes
     #SAVE AUTHDATA 
@@ -452,7 +452,7 @@ def callSAPI(offset, limit = 100):
     
     r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
                      headers=headers, params=params)
-    print "'documents' status code:", r.status_code
+    print "    'documents' status code:", r.status_code
     return r
 
 
