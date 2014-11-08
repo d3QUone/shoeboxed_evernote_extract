@@ -59,7 +59,7 @@ def main():
 
     if not path.isfile(StartPath + 'indexFile.txt'): 
         indexFile = open(StartPath + 'indexFile.txt', 'w+')
-        indexFile.write(json.dumps({'IDs':[]}))
+        indexFile.write(json.dumps({'IDs':[], 'offset':0}))
         indexFile.close()
         print "--Empty indexFile (JSON with IDs of Receipts) was created"
     ids = readIDsFromFile()
@@ -175,10 +175,12 @@ def main():
     
     if Num == -1:
         Num = totalCount
-    print '\n--Nums to sync =', Num, '\n'
+    print '\n--Nums to sync =', Num
 
-    for step in range(totalCount):
-        data = callSAPI(offset = step, limit = 1)
+    offset = ids['offset']
+    print '\n--offset now =', offset, '\n'
+    for step in range(totalCount-offset):
+        data = callSAPI(offset = step+offset, limit = 1)
         try:
             json_data = json.loads(data.text)
         except BaseException as ex:
@@ -193,6 +195,20 @@ def main():
             # creating Note object 
             note = Types.Note()
             note.notebookGuid = notebookGUID
+            
+            # delete all spaces at the end of the word 
+            st = oneReceipt['vendor']
+            c = len(oneReceipt['vendor'])-1
+            while c > 0:
+                if st[c] == " ":
+                    st = st[:c]
+                    c -= 1
+                else:
+                    break
+            oneReceipt['vendor'] = st
+            del(st, c)
+
+            # add title
             try:
                 note.title = oneReceipt['issued'][:oneReceipt['issued'].find('T')]+' - '+oneReceipt['vendor']
             except:
@@ -218,26 +234,32 @@ def main():
                 note.updated = t
             except:
                 print 'No modified time'
-            
-            # downloading pdf by link and formating
-            imageURL = oneReceipt['attachment']['url']
-            image = urllib.urlopen(imageURL, proxies={}).read()
-            md5 = hashlib.md5()
-            md5.update(image)
-            hash = md5.digest()
 
-            # uploading to evernote
-            data = Types.Data()
-            data.size = len(image)
-            data.bodyHash = hash
-            data.body = image
-            
-            resource = Types.Resource()
-            resource.mime = 'application/pdf'
-            resource.data = data
-            note.resources = [resource]
+            attachment = ""
+            try:
+                # downloading pdf by link and formating
+                imageURL = oneReceipt['attachment']['url']
+                image = urllib.urlopen(imageURL, proxies={}).read()
+                md5 = hashlib.md5()
+                md5.update(image)
+                hash = md5.digest()
 
-            hash_hex = binascii.hexlify(hash)
+                # uploading to evernote
+                data = Types.Data()
+                data.size = len(image)
+                data.bodyHash = hash
+                data.body = image
+                
+                resource = Types.Resource()
+                resource.mime = 'application/pdf'
+                resource.data = data
+                note.resources = [resource]
+
+                hash_hex = binascii.hexlify(hash)
+                attachment = "yes"
+            except:
+                print "Warning: No attachment"
+                attachment = "no"
             
             # creating Tag object from Categories
             try:
@@ -364,15 +386,18 @@ def main():
                 note.content += makeTableRow('Document source', oneReceipt['source']['type'])
             except:
                 note.content += makeTableRow('Document source', 'none')
-                
-            note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
-            #note.content += '</table><br/><br/>' #if upload limit is out - switch of pic attach
+
+            if attachment == "yes":
+                note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
+            else:
+                note.content += '</table><br/><br/>' #if no attachment
             note.content += '</en-note>'
 
             try:
                 created_note = note_store.createNote(note)
-                ids['IDs'].append(oneReceipt['id'])
                 #SAVE document ID every step - its safer
+                ids['IDs'].append(oneReceipt['id'])
+                ids['offset'] = step + offset
                 indexFile = open(StartPath + 'indexFile.txt', 'w+')
                 indexFile.write(json.dumps(ids))
                 indexFile.close()
@@ -387,7 +412,7 @@ def main():
         if i > Num:
             break
 
-    print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes with ids :', uncreatedNotes
+    print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes ids :', uncreatedNotes
     #SAVE AUTHDATA 
     authorize = open(StartPath + 'authorize.txt', 'w+')
     authorize.write(json.dumps(authData))
