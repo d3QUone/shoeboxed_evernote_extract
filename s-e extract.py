@@ -166,9 +166,13 @@ def main():
     try:
         json_data = json.loads(data.text)
     except BaseException as ex:
-        print "Error 5:", ex
-        print "json_data was ", json_data
-        sys.exit(2)
+        r = refreshAccessToken()
+        try:
+            authData['shoeboxed']['access_token'] = r['access_token']
+            data = callSAPI(offset = 0, limit = 1)
+            json_data = json.loads(data.text)
+        except BaseException as exc:
+            print 'Error 3:', str(exc), '\n\nRESTART ONLY'
 
     totalCount = json_data['totalCountFiltered']
     print '\n--total count of Receipts =',totalCount
@@ -180,15 +184,21 @@ def main():
     offset = ids['offset']
     print '\n--offset now =', offset, '\n'
     for step in range(totalCount-offset):
-        data = callSAPI(offset = step+offset, limit = 1)
+        data = callSAPI(offset = step+offset, limit = 1) # here too (1), handle here 
         try:
             json_data = json.loads(data.text)
+            if data.status_code in [401, 404]:
+                r = refreshAccessToken()
+                try:
+                    authData['shoeboxed']['access_token'] = r['access_token']
+                    data = callSAPI(offset = step+offset, limit = 1)
+                    json_data = json.loads(data.text)
+                except BaseException as exc:
+                    print 'Error 7:', str(exc), '\n\nRESTART ONLY'
+            oneReceipt = json_data['documents'][0] # ERR HERE! (2)
         except BaseException as ex:
-            print "Error 6 in cycle:", ex
-            print "json_data was ", json_data
-            sys.exit(2)
-        
-        oneReceipt = json_data['documents'][0]
+            print 'Error 6:', str(ex), '\n\nRESTART ONLY'
+                
         if oneReceipt['id'] not in ids['IDs']:
             print '-Receipt #', i,'\n', oneReceipt
 
@@ -196,17 +206,20 @@ def main():
             note = Types.Note()
             note.notebookGuid = notebookGUID
             
-            # delete all spaces at the end of the word 
-            st = oneReceipt['vendor']
-            c = len(oneReceipt['vendor'])-1
-            while c > 0:
-                if st[c] == " ":
-                    st = st[:c]
-                    c -= 1
-                else:
-                    break
-            oneReceipt['vendor'] = st
-            del(st, c)
+            # delete all spaces at the end of the word, if word exists 
+            try:
+                st = oneReceipt['vendor']
+                c = len(oneReceipt['vendor'])-1
+                while c > 0:
+                    if st[c] == " ":
+                        st = st[:c]
+                        c -= 1
+                    else:
+                        break
+                oneReceipt['vendor'] = st
+                del(st, c)
+            except:
+                pass
 
             # add title
             try:
