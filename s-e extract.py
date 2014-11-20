@@ -420,7 +420,9 @@ def main():
         if i > Num: 
             break
 
-    print '\nAll added notes ids:\n', ids['IDs'], '\n\nError occured in notes ids:\n', uncreatedNotes
+    print '\nAll added notes ids:\n', ids['IDs']
+    if len(uncreatedNotes) > 0:
+        print '\nError occured in notes ids:\n', uncreatedNotes
     #SAVE AUTHDATA 
     authorize = open(StartPath + 'authorize.txt', 'w+')
     authorize.write(json.dumps(authData))
