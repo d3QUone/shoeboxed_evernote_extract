@@ -1,17 +1,10 @@
 # -*- coding: utf-8 -*-
-import requests
-import urllib
-import json
-import sys
+import requests, urllib, json, sys, time, hashlib, binascii
 from os import path
 
 import evernote.edam.userstore.constants as UserStoreConstants
 import evernote.edam.type.ttypes as Types
 from evernote.api.client import EvernoteClient
-
-import time
-import hashlib
-import binascii
 
 #shoeboxed endpoints
 authorize_url = 'https://id.shoeboxed.com/oauth/authorize'    
@@ -135,7 +128,7 @@ def main():
         UserStoreConstants.EDAM_VERSION_MINOR
     )
     
-    # check notebook and create if none
+    # find notebook 
     notebookTargetName = "Shoeboxed"
     targetNotebook = Types.Notebook()
 
@@ -145,7 +138,7 @@ def main():
         notebooks.append(notebook.name) 
         if notebook.name == notebookTargetName:
             targetNotebook = notebook
-    
+    # or create if no
     if notebookTargetName not in notebooks:
         targetNotebook.name = notebookTargetName
         targetNotebook = note_store.createNotebook(targetNotebook)
@@ -154,13 +147,15 @@ def main():
     notebookGUID = targetNotebook.guid
     print 'notebookGUID =', notebookGUID
 
+    # ? 
     S = ['1 - OTHER IN QB', '1 - RECEIPT IN QB', '1 - STATEMENT RECONCILED IN QB',
          'Manoj - Ask Richard', 'Manoj - Duplicate', 'Manoj - Entered', 'Richard', 'Richard Responded']
     s = []
     for t in S:
         s.append(t.lower().replace(' ', ''))
 
-    i = 1
+    # process starts here
+    
     uncreatedNotes = []
     data = callSAPI(offset = 0, limit = 1) 
     try:
@@ -175,16 +170,19 @@ def main():
             print 'Error 3:', str(exc), '\n\nRESTART ONLY'
 
     totalCount = json_data['totalCountFiltered']
-    print '\n--total count of Receipts =',totalCount
-    
-    if Num == -1:
-        Num = totalCount
-    print '\n--Nums to sync =', Num
+    print '\n--total count of Receipts in Shoeboxed acc', totalCount
 
+    i = 1
     offset = ids['offset']
+    if Num == -1:
+        Num = totalCount - offset  
+        print '\n--Left to sync =', Num # absolute number to complete
+    else:
+        print '\n--Num to sync =', Num  # required number
+    
     print '\n--offset now =', offset, '\n'
-    for step in range(totalCount-offset):
-        data = callSAPI(offset = step+offset, limit = 1) # here too (1), handle here 
+    for step in range(totalCount-offset): 
+        data = callSAPI(offset = step+offset, limit = 1) 
         try:
             json_data = json.loads(data.text)
             if data.status_code in [401, 404]:
@@ -195,18 +193,17 @@ def main():
                     json_data = json.loads(data.text)
                 except BaseException as exc:
                     print 'Error 7:', str(exc), '\n\nRESTART ONLY'
-            oneReceipt = json_data['documents'][0] # ERR HERE! (2)
+            oneReceipt = json_data['documents'][0] 
         except BaseException as ex:
             print 'Error 6:', str(ex), '\n\nRESTART ONLY'
                 
         if oneReceipt['id'] not in ids['IDs']:
             print '-Receipt #', i,'\n', oneReceipt
-
-            # creating Note object 
+            # creating basic Note object 
             note = Types.Note()
             note.notebookGuid = notebookGUID
             
-            # delete all spaces at the end of the word, if word exists 
+            # deletes all spaces at the end of the word if word exists 
             try:
                 st = oneReceipt['vendor']
                 c = len(oneReceipt['vendor'])-1
@@ -346,7 +343,6 @@ def main():
                     note.content += makeTableDoubleRow(['Payment', 'Type'], [oneReceipt['paymentType']['type'], '**** **** **** none'])
                 except:
                     note.content += makeTableRow('Payment Type', 'none')
-                    #if no info given
 
             try:
                 note.content += makeTableRow('Notes', oneReceipt['notes'].replace('&', '&amp;'))
@@ -403,29 +399,28 @@ def main():
             if attachment == "yes":
                 note.content += '</table><br/><br/><en-media type="application/pdf" hash="' + hash_hex + '"/>'
             else:
-                note.content += '</table><br/><br/>' #if no attachment
+                note.content += '</table><br/><br/>' #if no attachment 
             note.content += '</en-note>'
 
             try:
                 created_note = note_store.createNote(note)
                 #SAVE document ID every step - its safer
                 ids['IDs'].append(oneReceipt['id'])
-                ids['offset'] = step + offset
+                ids['offset'] = i + offset
+                i += 1
                 indexFile = open(StartPath + 'indexFile.txt', 'w+')
                 indexFile.write(json.dumps(ids))
                 indexFile.close()
             except BaseException as ex:
-                print "\nError creating note =", ex, "\nreceipt id =", oneReceipt['id'], "\n"
+                print "\nError creating note =", str(ex), "\nreceipt id =", oneReceipt['id'], "\n"
                 uncreatedNotes.append(oneReceipt['id'])
-
-            i += 1
             print ""
 
-        #don't move that statement below!
-        if i > Num:
+        #don't move this statement below!
+        if i > Num: 
             break
 
-    print '\nAll added notes ids :', ids['IDs'], '\n\nError occured in notes ids :', uncreatedNotes
+    print '\nAll added notes ids:\n', ids['IDs'], '\n\nError occured in notes ids:\n', uncreatedNotes
     #SAVE AUTHDATA 
     authorize = open(StartPath + 'authorize.txt', 'w+')
     authorize.write(json.dumps(authData))
