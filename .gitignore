@@ -52,3 +52,7 @@ docs/_build/
 
 # PyBuilder
 target/
+authorize.txt
+debugger.py
+evernote_tests.py
+tech-task
