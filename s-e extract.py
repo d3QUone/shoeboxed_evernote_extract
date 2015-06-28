@@ -1,26 +1,43 @@
 # -*- coding: utf-8 -*-
-import requests, urllib, json, sys, time, hashlib, binascii
+import sys
 from os import path
+import time
+import hashlib
+import binascii
+
+import json
+import urllib
+import requests
 
 import evernote.edam.userstore.constants as UserStoreConstants
 import evernote.edam.type.ttypes as Types
 from evernote.api.client import EvernoteClient
 
 #shoeboxed endpoints
-authorize_url = 'https://id.shoeboxed.com/oauth/authorize'    
-token_url = 'https://id.shoeboxed.com/oauth/token'
+authorize_url = "https://id.shoeboxed.com/oauth/authorize"
+token_url = "https://id.shoeboxed.com/oauth/token"
 
 def main():
     global StartPath, authData, authorize_url, token_url, auth_token
     # 1
     StartPath = getCurrentPath()
     if not path.isfile(StartPath + 'authorize.txt'):
-        persInfo = {}
         #model template (for new user) with interactive instructions
-        persInfo['shoeboxed'] = {"ID":'your_ID', "Account_ID":'auto_Account_ID', "Secret":'your_Secret', "redirect_uri":'your_redirect_uri',
-                                 "state":'random_CSRFkey', "access_token":'auto_access_token', 
-                                 "refresh_token":'auto_refresh_token', "code":'code_from_url_here'}
-        persInfo['evernote'] = {"auth_token":'your_auth_token'}
+        persInfo = {}
+        persInfo["shoeboxed"] = {
+            "ID": "your_ID",
+            "Account_ID": "auto_Account_ID", 
+            "Secret": "your_Secret", 
+            "redirect_uri": "your_redirect_uri",
+            "state": "random_CSRFkey", 
+            "access_token": "auto_access_token",
+            "refresh_token": "auto_refresh_token", 
+            "code": "code_from_url_here"
+        }
+        persInfo["evernote"] = {
+            "auth_token": "your_auth_token"
+        }
+
         #SHOEBOXED interactive instructions
         print ("Open the link below and create a new appp:\n\nhttps://app.shoeboxed.com/member/v2/user-settings#api"+
                "\n\nPaste 'ID' below and press Enter:")
@@ -431,31 +448,32 @@ def main():
 
 #representation of result
 def makeTableRow(name, val):
-    if val == '':
-        val = 'none'
-    return '<tr><td> '+name+' </td><td> '+val+'</td></tr>'
+    if val == "":
+        val = "none"
+    return "<tr><td>{0}</td><td>{1}</td></tr>".format(name, val)
 
     
 def makeTableDoubleRow(name, val):
-    no = ''
+    no = ""
     for n in name:
-        no += n + '<br/>'
-    vo = ''
+        no += n + "<br/>"
+    vo = ""
     for v in val:
-        vo += v + '<br/>'
-    return '<tr><td>'+no+'</td><td>'+vo+'</td></tr>'
+        vo += v + "<br/>"
+    return "<tr><td>{0}</td><td>{1}</td></tr>".format(no, vo)
     
 
 #shoeboxed auth (one time)
 def obtainAccessToken():
-    headers = {'Content-Type':'application/x-www-form-urlencoded'}
-    params = {}
-    params['code'] = authData['shoeboxed']['code']
-    params['grant_type'] = 'authorization_code'
-    params['redirect_uri'] = authData['shoeboxed']['redirect_uri']
-
-    r = requests.post(token_url, headers=headers, params=params,
-                      auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    params = {
+        "code": authData["shoeboxed"]["code"],
+        "redirect_uri": authData["shoeboxed"]["redirect_uri"],
+        "grant_type": "authorization_code"
+    }
+    r = requests.post(token_url, headers=headers, params=params, auth=(authData["shoeboxed"]["ID"], authData["shoeboxed"]["Secret"]))
     r = json.loads(r.text)
     print "\nobtainAccessToken returns", r, "\n"
     return r
@@ -463,40 +481,41 @@ def obtainAccessToken():
 
 #shoeboxed auth (all other times)
 def refreshAccessToken():
-    headers = {'Content-Type':'application/x-www-form-urlencoded'}
-    params = {}
-    params['refresh_token'] = authData['shoeboxed']['refresh_token'] 
-    params['grant_type'] = 'refresh_token'
-    params['redirect_uri'] = authData['shoeboxed']['redirect_uri']
-
-    r = requests.post(token_url, headers=headers, params=params,
-                      auth=(authData['shoeboxed']['ID'], authData['shoeboxed']['Secret']))
-    r = json.loads(r.text)
-    return r
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    params = {
+        "refresh_token": authData["shoeboxed"]["refresh_token"],
+        "redirect_uri": authData["shoeboxed"]["redirect_uri"],
+        "grant_type": "refresh_token"
+    }
+    r = requests.post(token_url, headers=headers, params=params, auth=(authData["shoeboxed"]["ID"], authData["shoeboxed"]["Secret"]))
+    return json.loads(r.text)
     
 
-def callSAPI(offset, limit = 100):
-    print '\n--Call SHOEBOXED API (documents)'
-    sapi_url = 'https://api.shoeboxed.com/v2/'    
-    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
-               "Content-Type":"application/json"}
-    params = {}
-    params['type'] = 'receipt'
-    params['offset'] = offset
-    params['limit'] = limit
-    
-    r = requests.get(sapi_url+'accounts/'+authData['shoeboxed']['Account_ID']+'/documents/?',
-                     headers=headers, params=params)
+def callSAPI(offset, limit=100):
+    print "\n--Call SHOEBOXED API (documents)"
+    headers = {
+        "Authorization": "Bearer " + authData['shoeboxed']['access_token'],
+        "Content-Type": "application/json"
+    }
+    params = {
+        "type": "receipt",
+        "offset": offset,
+        "limit": limit
+    }
+    r = requests.get("https://api.shoeboxed.com/v2/accounts/"+authData['shoeboxed']['Account_ID']+'/documents/?', headers=headers, params=params)
     print "    'documents' status code:", r.status_code
     return r
 
 
 def callSAPI2():
-    print '\n--Call SHOEBOXED API (user)'
-    sapi_url = 'https://api.shoeboxed.com/v2/'    
-    headers = {"Authorization": "Bearer " + authData['shoeboxed']['access_token'],
-               "Content-Type":"application/json"}
-    r = requests.get(sapi_url+'user/?', headers=headers)
+    print "\n--Call SHOEBOXED API (user)"
+    headers = {
+        "Authorization": "Bearer " + authData['shoeboxed']['access_token'],
+        "Content-Type": "application/json"
+    }
+    r = requests.get("https://api.shoeboxed.com/v2/user/?", headers=headers)
     print "'user' status code:", r.status_code
     return r
     
@@ -520,18 +539,18 @@ def readNumFromFile():
     num = numFile.read()
     num = num[num.find('=')+1:num.find(';')]
     return int(num)
-        
-        
+
+
 def returnAuthURL(data):
     authData = data
-    params = {}
-    params['client_id'] = authData['shoeboxed']['ID']
-    params['response_type'] = 'code'
-    params['scope'] = 'all'
-    params['redirect_uri'] = authData['shoeboxed']['redirect_uri']
-    params['state'] = authData['shoeboxed']['state']
-    #authorize_url = 'https://id.shoeboxed.com/oauth/authorize' 
-    return 'https://id.shoeboxed.com/oauth/authorize?'+urllib.urlencode(params)
+    params = {
+        "client_id": data["shoeboxed"]["ID"],
+        "redirect_uri": data["shoeboxed"]["redirect_uri"],
+        "state": data["shoeboxed"]["state"],
+        "response_type": "code",
+        "scope": "all"
+    }
+    return "https://id.shoeboxed.com/oauth/authorize?" + urllib.urlencode(params)
 
 
 # gets the current location of script-file
@@ -542,4 +561,5 @@ def getCurrentPath():
     return spath
 
 
-main()
+if __name__ == "__main__":
+    main()
