@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+
+__author__ = 'vladimir'
+__skype__ = 'volkvid'
+__email__ = 'volkvid@yandex.ru'
+
 import sys
 from os import path
 import time
